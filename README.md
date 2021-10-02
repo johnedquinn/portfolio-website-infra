@@ -1,6 +1,17 @@
-# Welcome to your CDK TypeScript project!
+# Portfolio Website Infrastructure
 
-This is a blank project for TypeScript development with CDK.
+Hi! This project is an AWS CDK Pipeline, written in Typescript. Its goal is to set up a CodePipeline -- with stages involving CodeBuild, staging environments, and production environments (ECS).
+
+## To Run
+
+### Bootstrap
+
+To bootstrap your AWS account:
+```console
+% npx cdk bootstrap --profile <AWS_PROFILE> --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
+```
+
+## CDK Information
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
