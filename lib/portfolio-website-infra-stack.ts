@@ -4,6 +4,7 @@ import { Duration, RemovalPolicy } from '@aws-cdk/core';
 import { BuildStage } from './build-stage';
 import { PortfolioPipeline } from './portfolio-pipeline';
 import { SourceStage } from './source-stage';
+import { DeployStage } from './deploy-stage';
 
 /**
  * @class  PortfolioWebsiteInfraStack representing all resources necessary to maintain portfolio-website
@@ -43,16 +44,32 @@ export class PortfolioWebsiteInfraStack extends cdk.Stack {
         })
 
         // Source Stage
-        const sourceStage = new SourceStage(this, 'SourceStage', { pipeline: pipeline });
+        const sourceStage = new SourceStage(this, 'Source', { pipeline: pipeline });
         pipeline.addStage(sourceStage.stageConfig);
 
         // Build Stage
-        const buildStage = new BuildStage(this, 'BuildStage', { pipeline: pipeline });
+        const buildStage = new BuildStage(this, 'Build', { pipeline: pipeline });
         pipeline.addStage(buildStage.stageConfig);
 
         // Beta Testing Stage
+        const betaStage = new DeployStage(this, 'Beta', {
+            pipeline: pipeline,
+            repository: repository,
+            minInstances: 1,
+            maxInstances: 1,
+            desiredInstances: 1
+        });
+        pipeline.addStage(betaStage.stageConfig);
 
         // Production Stage
+        const prodStage = new DeployStage(this, 'Prod', {
+            pipeline: pipeline,
+            repository: repository,
+            minInstances: 1,
+            maxInstances: 1,
+            desiredInstances: 1
+        });
+        pipeline.addStage(prodStage.stageConfig);
 
     }
 
