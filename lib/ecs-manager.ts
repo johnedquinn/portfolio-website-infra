@@ -1,8 +1,11 @@
-import { IBaseService, ContainerImage } from '@aws-cdk/aws-ecs';
-import { ApplicationLoadBalancedFargateService } from '@aws-cdk/aws-ecs-patterns';
+import { TaskDefinition, 
+    NetworkMode, Compatibility, ContainerDefinition, 
+    RepositoryImage, LogDriver, FargateService } from '@aws-cdk/aws-ecs';
 import { Cluster } from '@aws-cdk/aws-ecs';
 import { CfnOutput, Construct, Duration } from '@aws-cdk/core';
 import { Repository } from '@aws-cdk/aws-ecr';
+import { SecurityGroup, Vpc, Port } from '@aws-cdk/aws-ec2';
+import { ApplicationTargetGroup } from '@aws-cdk/aws-elasticloadbalancingv2';
 
 /**
  * @interface EcsManagerProps to specify arguments
@@ -12,6 +15,10 @@ interface EcsManagerProps {
     readonly minInstances: number;
     readonly maxInstances: number;
     readonly desiredInstances: number;
+    readonly vpc: Vpc
+    readonly albSG: SecurityGroup;
+    readonly targetGroup: ApplicationTargetGroup;
+    readonly stage: string
 }
 
 /**
@@ -24,12 +31,14 @@ class EcsManager extends Construct {
     public readonly repository: Repository;
     public readonly minInstances: number;
     public readonly maxInstances: number;
+    private readonly vpc: Vpc;
 
     // Service Members
-    private fargateService: ApplicationLoadBalancedFargateService;
-    public readonly service: IBaseService;
+    public service: FargateService;
     public readonly containerName: string;
     public readonly cluster: Cluster;
+    public readonly task: TaskDefinition;
+    private readonly container: ContainerDefinition;
 
     /**
      * Constructor
@@ -41,23 +50,82 @@ class EcsManager extends Construct {
     constructor(scope: Construct, id: string, props: EcsManagerProps) {
         super(scope, id);
 
-        // Grab Params
+        // Grab Arguments
         this.repository = props.repository;
         this.minInstances = props.minInstances;
         this.maxInstances = props.maxInstances;
+        this.vpc = props.vpc;
 
         // Configure Cluster and Service
-        this.cluster = new Cluster(this, 'Cluster');
-        this.fargateService = this.createService(this.cluster, props.desiredInstances);
-        this.service = this.fargateService.service;
-        this.addAutoScaling();
+        this.cluster = this.createCluster(id);
 
-        // Grant Permissions to ECS to use ECR
-        this.repository.grantPull(this.fargateService.taskDefinition.executionRole!);
-        this.containerName = this.fargateService.taskDefinition.defaultContainer!.containerName;
+        // Create Task
+        this.task = this.createTask();
+
+        // Create Container
+        this.container = this.createContainer(this.task, this.repository, props.stage);
+
+        // Create Security Group to Communicate with Load Balancer
+        const ecsSg = this.createOutboundSecurityGroup(this.vpc, props.albSG);
+
+        // Create Service
+        this.service = this.createService(this.cluster, props.targetGroup, this.task, ecsSg, props.desiredInstances);
+
+        // Add Auto-Scaling to Service
+        this.addAutoScaling(this.service, props.minInstances, props.maxInstances);
+
 
         // Output Relevant Information
         this.output();
+    }
+
+    private createCluster(name: string): Cluster {
+        return new Cluster(this, name, {
+            clusterName: name,
+            // vpc
+        });
+    }
+
+    private createTask(): TaskDefinition {
+        return new TaskDefinition(this, "Task", {
+            family: "task",
+            compatibility: Compatibility.EC2_AND_FARGATE,
+            cpu: "256",
+            memoryMiB: "512",
+            networkMode: NetworkMode.AWS_VPC
+        });
+    }
+
+    private createContainer(taskDef: TaskDefinition, repository: Repository, stage: string): ContainerDefinition {
+        let container = new ContainerDefinition(this, 'Container', {
+            image:  RepositoryImage.fromEcrRepository(repository, "latest"),
+            memoryLimitMiB: 512,
+            environment: {
+            DB_HOST: ""
+            },
+            // store the logs in cloudwatch 
+            logging: LogDriver.awsLogs({ streamPrefix: `portfolio-website-${stage}` }),
+            taskDefinition: taskDef
+        });
+
+        container.addPortMappings({ containerPort: 80 });
+
+        return container;
+    }
+
+    private createOutboundSecurityGroup(vpc: Vpc, albSG: SecurityGroup) {
+        let ecsSG = new SecurityGroup(this, "ecsSG", {
+        vpc: vpc,
+        allowAllOutbound: true,
+        });
+
+        ecsSG.connections.allowFrom(
+            albSG,
+            Port.allTcp(),
+            "Application Load Balancer"
+          );
+
+          return ecsSG;
     }
 
     /**
@@ -67,26 +135,39 @@ class EcsManager extends Construct {
      * @param desiredCount 
      * @returns 
      */
-    private createService(cluster: Cluster, desiredCount: number) {
-        return new ApplicationLoadBalancedFargateService(this, 'Service', {
-            cluster: cluster,
-            taskImageOptions: {
-                image: ContainerImage.fromEcrRepository(this.repository, 'latest'),
-            },
-            desiredCount: desiredCount
+    private createService(cluster: Cluster, target: ApplicationTargetGroup, taskDef: TaskDefinition, ecsSG: SecurityGroup, desired: number): FargateService {
+        let service = new FargateService(this, "service", {
+            cluster,
+            desiredCount: desired,
+            taskDefinition: taskDef,
+            securityGroups: [ecsSG],
+            assignPublicIp: true,
         });
+
+        service.attachToApplicationTargetGroup(target);
+
+        return service;
     }
 
     /**
      * Configure Auto-Scaling
+     * 
+     * @param service 
+     * @param min 
+     * @param max 
      */
-    private addAutoScaling() {
-        const autoScalingGroup = this.fargateService.service.autoScaleTaskCount({
-            minCapacity: this.minInstances,
-            maxCapacity: this.maxInstances
+    private addAutoScaling(service: FargateService, min: number, max: number) {
+        const autoScalingGroup = service.autoScaleTaskCount({
+            minCapacity: min,
+            maxCapacity: max
         });
         autoScalingGroup.scaleOnCpuUtilization('CpuScaling', {
-            targetUtilizationPercent: 50,
+            targetUtilizationPercent: 70,
+            scaleInCooldown: Duration.seconds(60),
+            scaleOutCooldown: Duration.seconds(60),
+        });
+        autoScalingGroup.scaleOnMemoryUtilization('MemScaling', {
+            targetUtilizationPercent: 70,
             scaleInCooldown: Duration.seconds(60),
             scaleOutCooldown: Duration.seconds(60),
         });
@@ -97,7 +178,7 @@ class EcsManager extends Construct {
      */
     private output() {
         new CfnOutput(this, 'ECRRepo_ARN', { value: this.repository.repositoryArn });
-        new CfnOutput(this, 'ContainerName', { value: this.containerName });
+        new CfnOutput(this, 'ECS_Service_ARN', { value: this.service.serviceArn });
     }
 }
 
