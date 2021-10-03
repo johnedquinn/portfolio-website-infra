@@ -1,5 +1,5 @@
 import { Repository, TagMutability } from '@aws-cdk/aws-ecr';
-import * as cdk from '@aws-cdk/core';
+import { Construct, StackProps, Stack } from '@aws-cdk/core';
 import { Duration, RemovalPolicy } from '@aws-cdk/core';
 import { BuildStage } from './build-stage';
 import { PortfolioPipeline } from './portfolio-pipeline';
@@ -10,7 +10,7 @@ import { DeployStage } from './deploy-stage';
  * @class  PortfolioWebsiteInfraStack representing all resources necessary to maintain portfolio-website
  * @author johnedquinn
  */
-export class PortfolioWebsiteInfraStack extends cdk.Stack {
+export class PortfolioWebsiteInfraStack extends Stack {
 
     /**
      * Constructor
@@ -19,13 +19,15 @@ export class PortfolioWebsiteInfraStack extends cdk.Stack {
      * @param id 
      * @param props 
      */
-    constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
+    constructor(scope: Construct, id: string, props?: StackProps) {
         super(scope, id, props);
 
-        // ECR Repository
+        // @TODO: Trigger Deployment of own Stack whenever pushed to main
+
+        // ECR Shared Repository
         const repository = new Repository(this, 'Repository', {
             repositoryName: 'portfolio-website',
-            removalPolicy: RemovalPolicy.RETAIN,
+            removalPolicy: RemovalPolicy.DESTROY,
             imageTagMutability: TagMutability.MUTABLE,
             imageScanOnPush: false,
             lifecycleRegistryId: '409345029529',
@@ -53,7 +55,7 @@ export class PortfolioWebsiteInfraStack extends cdk.Stack {
 
         // Beta Testing Stage
         const betaStage = new DeployStage(this, 'Beta', {
-            pipeline: pipeline,
+            image: pipeline.image,
             repository: repository,
             minInstances: 1,
             maxInstances: 1,
@@ -61,15 +63,21 @@ export class PortfolioWebsiteInfraStack extends cdk.Stack {
         });
         pipeline.addStage(betaStage.stageConfig);
 
+        // @TODO: Load and Integration Testing on Beta Stage
+
+        // @TODO: Manual Approval between Beta and Prod
+
         // Production Stage
         const prodStage = new DeployStage(this, 'Prod', {
-            pipeline: pipeline,
+            image: pipeline.image,
             repository: repository,
             minInstances: 1,
             maxInstances: 1,
             desiredInstances: 1
         });
         pipeline.addStage(prodStage.stageConfig);
+
+        // @TODO: Alarm and Metrics on Prod Stage
 
     }
 
