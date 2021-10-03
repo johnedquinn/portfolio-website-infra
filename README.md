@@ -38,11 +38,18 @@ I still need to figure out exactly how to avoid specifying AWS account IDs in th
 
 The AWS CDK has proven itself to be an extremely powerful tool, and the workflow is pretty incredible. Embracing Docker and GitHub is absolutely one of the best features -- it has caused development times to drastically drop. I cranked out the update to my old website repository to work well with Docker and NGINX to create a production-ready website and initialized the core functionality of this project in about 24 hours.
 
+### Project Structure
+
+To get into the details of how this project is structured, we'll need to take a look at the App's instantiation in `bin/portfolio-website-infra.ts`. Here, we declare the application and call our main stack, `lib/portfolio-website-infra-stack.ts`.
+
+This file is where we define the front-end's ECR repository, the pipeline, the source stage, the build stage, and both deployment stages. The idea of everything outside of the deployment stages is to contain shared functionality (pipeline, ECR repo, GitHub sourcing, artifact building, etc) -- while the deployment stages are self-contained (own VPCs, load-balancers, ECS clusters, etc).
+
 ## Requirements
+
 You'll need:
 - the AWS CLI
 - the AWS CDK CLI
-- NodeJS
+- NodeJS -- specifically npm
 
 ## Installation
 
