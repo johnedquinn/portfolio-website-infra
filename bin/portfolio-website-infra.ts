@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
+/** Imports **/
 import 'source-map-support/register';
 import * as cdk from '@aws-cdk/core';
-import { PortfolioPipelineStack } from '../lib/pipeline-stack';
+import { PortfolioWebsiteInfraStack } from '../lib/portfolio-website-infra-stack';
 
+// Initialize Application
 const app = new cdk.App();
-new PortfolioPipelineStack(app, 'PortfolioPipelineStack', {
+
+// Attach Stack to Application
+new PortfolioWebsiteInfraStack(app, 'PortfolioWebsiteInfraStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
