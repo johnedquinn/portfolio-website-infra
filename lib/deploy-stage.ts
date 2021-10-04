@@ -1,7 +1,7 @@
 import { StageProps, Artifact } from '@aws-cdk/aws-codepipeline';
 import { EcsDeployAction } from '@aws-cdk/aws-codepipeline-actions';
 import { Repository } from '@aws-cdk/aws-ecr';
-import { Construct, Duration } from '@aws-cdk/core';
+import { Construct, Duration, CfnOutput } from '@aws-cdk/core';
 import { EcsManager } from './ecs-manager';
 import { Vpc, SecurityGroup, Peer, Port } from '@aws-cdk/aws-ec2'
 import { ApplicationTargetGroup, ApplicationLoadBalancer, ApplicationProtocol, TargetType, Protocol } from '@aws-cdk/aws-elasticloadbalancingv2';
@@ -76,10 +76,13 @@ class DeployStage extends Construct {
 
         // Initialize ECS Manager
         this.ecsManager = this.createEcsManager(props.minInstances, props.maxInstances,
-            props.desiredInstances, props.repository, vpc, albSG, targetGroup, id);
+            props.desiredInstances, props.repository, vpc, albSG, targetGroup, props.stage);
 
         // Create Stage
         this.stageConfig = this.createDeployStage(id, props.image);
+
+        // CloudFormation Output
+        this.output(props.stage, vpc, zone, cert, targetGroup, albSG, alb, this.stageConfig);
     }
 
     private createVpc(id: string) {
@@ -169,6 +172,20 @@ class DeployStage extends Construct {
             stageName: stageName,
             actions: [ecsDeployAction],
         }
+    }
+
+    /**
+     * Print Output
+     */
+    private output(stage: string, vpc: Vpc, zone: PublicHostedZone, cert: Certificate, 
+        target: ApplicationTargetGroup, albSG: SecurityGroup, alb: ApplicationLoadBalancer, deploy: StageProps) {
+        new CfnOutput(this, `VPC_ID_${stage}`, { value: vpc.vpcId });
+        new CfnOutput(this, `Zone_ID_${stage}`, { value: zone.hostedZoneId });
+        new CfnOutput(this, `Cert_ARN_${stage}`, { value: cert.certificateArn });
+        new CfnOutput(this, `TargetGroup_ARN_${stage}`, { value: target.targetGroupArn });
+        new CfnOutput(this, `AlbSG_ID_${stage}`, { value: albSG.securityGroupId });
+        new CfnOutput(this, `ALB_ARN_${stage}`, { value: alb.loadBalancerArn });
+        new CfnOutput(this, `DeployStage_Name_${stage}`, { value: deploy.stageName });
     }
 }
 

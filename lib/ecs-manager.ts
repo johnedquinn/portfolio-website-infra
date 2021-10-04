@@ -31,6 +31,7 @@ class EcsManager extends Construct {
     public readonly repository: Repository;
     public readonly minInstances: number;
     public readonly maxInstances: number;
+    public readonly stage: string;
     private readonly vpc: Vpc;
 
     // Service Members
@@ -54,6 +55,7 @@ class EcsManager extends Construct {
         this.repository = props.repository;
         this.minInstances = props.minInstances;
         this.maxInstances = props.maxInstances;
+        this.stage = props.stage;
         this.vpc = props.vpc;
 
         // Configure Cluster and Service
@@ -177,8 +179,10 @@ class EcsManager extends Construct {
      * Print Output
      */
     private output() {
-        new CfnOutput(this, 'ECRRepo_ARN', { value: this.repository.repositoryArn });
-        new CfnOutput(this, 'ECS_Service_ARN', { value: this.service.serviceArn });
+        new CfnOutput(this, `ECS_Service_ARN_${this.stage}`, { value: this.service.serviceArn });
+        new CfnOutput(this, `ECS_Cluster_ARN_${this.stage}`, { value: this.cluster.clusterArn });
+        new CfnOutput(this, `ECS_Task_ARN_${this.stage}`, { value: this.task.taskDefinitionArn });
+        new CfnOutput(this, `ECS_Container_Name_${this.stage}`, { value: this.container.containerName });
     }
 }
 
