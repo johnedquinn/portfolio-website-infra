@@ -31,6 +31,7 @@ class EcsManager extends Construct {
     public readonly repository: Repository;
     public readonly minInstances: number;
     public readonly maxInstances: number;
+    public readonly stage: string;
     private readonly vpc: Vpc;
 
     // Service Members
@@ -54,16 +55,17 @@ class EcsManager extends Construct {
         this.repository = props.repository;
         this.minInstances = props.minInstances;
         this.maxInstances = props.maxInstances;
+        this.stage = props.stage;
         this.vpc = props.vpc;
 
         // Configure Cluster and Service
-        this.cluster = this.createCluster(id);
+        this.cluster = this.createCluster(id, props.vpc);
 
         // Create Task
         this.task = this.createTask();
 
         // Create Container
-        this.container = this.createContainer(this.task, this.repository, props.stage);
+        this.container = this.createContainer(this.task, this.repository);
 
         // Create Security Group to Communicate with Load Balancer
         const ecsSg = this.createOutboundSecurityGroup(this.vpc, props.albSG);
@@ -79,15 +81,15 @@ class EcsManager extends Construct {
         this.output();
     }
 
-    private createCluster(name: string): Cluster {
+    private createCluster(name: string, vpc: Vpc): Cluster {
         return new Cluster(this, name, {
             clusterName: name,
-            // vpc
+            vpc: vpc
         });
     }
 
     private createTask(): TaskDefinition {
-        return new TaskDefinition(this, "Task", {
+        return new TaskDefinition(this, `Task-${this.stage}`, {
             family: "task",
             compatibility: Compatibility.EC2_AND_FARGATE,
             cpu: "256",
@@ -96,15 +98,15 @@ class EcsManager extends Construct {
         });
     }
 
-    private createContainer(taskDef: TaskDefinition, repository: Repository, stage: string): ContainerDefinition {
-        let container = new ContainerDefinition(this, 'Container', {
+    private createContainer(taskDef: TaskDefinition, repository: Repository): ContainerDefinition {
+        let container = new ContainerDefinition(this, `Container-${this.stage}`, {
             image:  RepositoryImage.fromEcrRepository(repository, "latest"),
             memoryLimitMiB: 512,
             environment: {
             DB_HOST: ""
             },
             // store the logs in cloudwatch 
-            logging: LogDriver.awsLogs({ streamPrefix: `portfolio-website-${stage}` }),
+            logging: LogDriver.awsLogs({ streamPrefix: `portfolio-website-${this.stage}` }),
             taskDefinition: taskDef
         });
 
@@ -114,7 +116,7 @@ class EcsManager extends Construct {
     }
 
     private createOutboundSecurityGroup(vpc: Vpc, albSG: SecurityGroup) {
-        let ecsSG = new SecurityGroup(this, "ecsSG", {
+        let ecsSG = new SecurityGroup(this, `ecsSG-${this.stage}`, {
         vpc: vpc,
         allowAllOutbound: true,
         });
@@ -136,7 +138,7 @@ class EcsManager extends Construct {
      * @returns 
      */
     private createService(cluster: Cluster, target: ApplicationTargetGroup, taskDef: TaskDefinition, ecsSG: SecurityGroup, desired: number): FargateService {
-        let service = new FargateService(this, "service", {
+        let service = new FargateService(this, `service-${this.stage}`, {
             cluster,
             desiredCount: desired,
             taskDefinition: taskDef,
@@ -161,12 +163,12 @@ class EcsManager extends Construct {
             minCapacity: min,
             maxCapacity: max
         });
-        autoScalingGroup.scaleOnCpuUtilization('CpuScaling', {
+        autoScalingGroup.scaleOnCpuUtilization(`CpuScaling-${this.stage}`, {
             targetUtilizationPercent: 70,
             scaleInCooldown: Duration.seconds(60),
             scaleOutCooldown: Duration.seconds(60),
         });
-        autoScalingGroup.scaleOnMemoryUtilization('MemScaling', {
+        autoScalingGroup.scaleOnMemoryUtilization(`MemScaling-${this.stage}`, {
             targetUtilizationPercent: 70,
             scaleInCooldown: Duration.seconds(60),
             scaleOutCooldown: Duration.seconds(60),
@@ -177,8 +179,10 @@ class EcsManager extends Construct {
      * Print Output
      */
     private output() {
-        new CfnOutput(this, 'ECRRepo_ARN', { value: this.repository.repositoryArn });
-        new CfnOutput(this, 'ECS_Service_ARN', { value: this.service.serviceArn });
+        new CfnOutput(this, `ECS_Service_ARN_${this.stage}`, { value: this.service.serviceArn });
+        new CfnOutput(this, `ECS_Cluster_ARN_${this.stage}`, { value: this.cluster.clusterArn });
+        new CfnOutput(this, `ECS_Task_ARN_${this.stage}`, { value: this.task.taskDefinitionArn });
+        new CfnOutput(this, `ECS_Container_Name_${this.stage}`, { value: this.container.containerName });
     }
 }
 

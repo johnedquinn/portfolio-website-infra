@@ -1,7 +1,8 @@
 import { StageProps, Artifact } from '@aws-cdk/aws-codepipeline';
 import { CodeStarConnectionsSourceAction } from '@aws-cdk/aws-codepipeline-actions';
-import { Construct } from '@aws-cdk/core';
+import { Construct, CfnOutput } from '@aws-cdk/core';
 import { PortfolioPipeline } from './portfolio-pipeline';
+import { StringParameter } from '@aws-cdk/aws-ssm';
 
 /**
  * @interface SourceStageProps to specify arguments
@@ -33,6 +34,8 @@ class SourceStage extends Construct {
         this.pipeline = props.pipeline;
         this.sourceCode = props.pipeline.sourceCode;
         this.stageConfig = this.createSourceStage('Source', this.sourceCode);
+
+        this.output(this.stageConfig);
     }
 
     /**
@@ -43,13 +46,19 @@ class SourceStage extends Construct {
      * @return  {StageProps}            Necessary configuration for stage in a pipeline.
      */
     private createSourceStage(stageName: string, code: Artifact): StageProps {
+        // Grab Values from SSM
+        const owner = StringParameter.valueForStringParameter(this, 'GITHUB_USER');
+        const repo = StringParameter.valueForStringParameter(this, 'GITHUB_REPO');
+        const connectionArn = StringParameter.valueForStringParameter(this, 'GITHUB_CONN');
+
+        // Create Action
         const githubAction = new CodeStarConnectionsSourceAction({
             actionName: 'Github_Source',
             branch: 'main',
-            connectionArn: 'arn:aws:codestar-connections:us-east-2:409345029529:connection/ff0cb554-229f-4a65-8123-d6282adcaf0b',
+            connectionArn: connectionArn,
             output: code,
-            owner: 'johnedquinn',
-            repo: 'portfolio-website',
+            owner: owner,
+            repo: repo,
             codeBuildCloneOutput: true
         });
         return {
@@ -58,6 +67,14 @@ class SourceStage extends Construct {
         };
     }
 
+    /**
+     * Print Output
+     */
+    private output(source: StageProps) {
+        new CfnOutput(this, 'SourceStage_Name', { value: source.stageName });
+    }
+
 }
+
 
 export { SourceStage, SourceStageProps };

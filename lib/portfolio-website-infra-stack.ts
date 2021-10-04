@@ -1,10 +1,21 @@
 import { Repository, TagMutability } from '@aws-cdk/aws-ecr';
-import { Construct, StackProps, Stack } from '@aws-cdk/core';
+import { CfnOutput, Construct, StackProps, Stack } from '@aws-cdk/core';
 import { Duration, RemovalPolicy } from '@aws-cdk/core';
 import { BuildStage } from './build-stage';
 import { PortfolioPipeline } from './portfolio-pipeline';
 import { SourceStage } from './source-stage';
 import { DeployStage } from './deploy-stage';
+
+interface PortfolioEnvironmentProps {
+    readonly account: string;
+    readonly region: string;
+}
+
+interface PortfolioStackProps extends StackProps {
+    readonly env: PortfolioEnvironmentProps;
+    readonly infraName: string;
+    readonly appName: string;
+}
 
 /**
  * @class  PortfolioWebsiteInfraStack representing all resources necessary to maintain portfolio-website
@@ -19,8 +30,18 @@ export class PortfolioWebsiteInfraStack extends Stack {
      * @param id 
      * @param props 
      */
-    constructor(scope: Construct, id: string, props?: StackProps) {
+    constructor(scope: Construct, id: string, props: PortfolioStackProps) {
         super(scope, id, props);
+
+        // Default Beta Values
+        const BETA_IDENTIFIER = 'beta';
+        const BETA_DOMAIN = process.env.BETA_DOMAIN || 'johnedquinn-beta.click';
+        const BETA_ZONE_ID = process.env.BETA_ZONE_ID || 'Z0122871PC0G7PLFCLZ7';
+
+        // Default Prod Values
+        const PROD_IDENTIFIER = 'prod';
+        const PROD_DOMAIN = process.env.PROD_DOMAIN || 'johnedquinn.io';
+        const PROD_ZONE_ID = process.env.PROD_ZONE_ID || 'Z094875525UQXE18F6WUE';
 
         // @TODO: Trigger Deployment of own Stack whenever pushed to main
 
@@ -30,14 +51,12 @@ export class PortfolioWebsiteInfraStack extends Stack {
             removalPolicy: RemovalPolicy.DESTROY,
             imageTagMutability: TagMutability.MUTABLE,
             imageScanOnPush: false,
-            lifecycleRegistryId: '409345029529',
-            lifecycleRules: [
-                {
-                    rulePriority: 1,
-                    description: 'Testing rule',
-                    maxImageAge: Duration.days(1000)
-                }
-            ]
+            lifecycleRegistryId: props.env.account,
+            lifecycleRules: [{
+                rulePriority: 1,
+                description: 'Testing rule',
+                maxImageAge: Duration.days(1000)
+            }]
         });
 
         // Initialize Pipeline
@@ -50,7 +69,10 @@ export class PortfolioWebsiteInfraStack extends Stack {
         pipeline.addStage(sourceStage.stageConfig);
 
         // Build Stage
-        const buildStage = new BuildStage(this, 'Build', { pipeline: pipeline });
+        const buildStage = new BuildStage(this, 'Build', {
+            sourceCode: pipeline.sourceCode,
+            image: pipeline.image
+        });
         pipeline.addStage(buildStage.stageConfig);
 
         // Beta Testing Stage
@@ -59,10 +81,13 @@ export class PortfolioWebsiteInfraStack extends Stack {
             repository: repository,
             minInstances: 1,
             maxInstances: 1,
-            desiredInstances: 1
+            desiredInstances: 1,
+            domain: BETA_DOMAIN,
+            zoneId: BETA_ZONE_ID,
+            stage: BETA_IDENTIFIER
         });
         pipeline.addStage(betaStage.stageConfig);
-
+        
         // @TODO: Load and Integration Testing on Beta Stage
 
         // @TODO: Manual Approval between Beta and Prod
@@ -72,13 +97,26 @@ export class PortfolioWebsiteInfraStack extends Stack {
             image: pipeline.image,
             repository: repository,
             minInstances: 1,
-            maxInstances: 1,
-            desiredInstances: 1
+            maxInstances: 2,
+            desiredInstances: 1,
+            domain: PROD_DOMAIN,
+            zoneId: PROD_ZONE_ID,
+            stage: PROD_IDENTIFIER
         });
         pipeline.addStage(prodStage.stageConfig);
 
         // @TODO: Alarm and Metrics on Prod Stage
 
+        // Output to CloudFormation
+        this.output(repository);
+
+    }
+
+    /**
+     * Print Output
+     */
+    private output(repo: Repository) {
+        new CfnOutput(this, 'ECRRepo_ARN', { value: repo.repositoryArn });
     }
 
 }

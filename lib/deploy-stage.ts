@@ -1,10 +1,14 @@
 import { StageProps, Artifact } from '@aws-cdk/aws-codepipeline';
 import { EcsDeployAction } from '@aws-cdk/aws-codepipeline-actions';
 import { Repository } from '@aws-cdk/aws-ecr';
-import { Construct, Duration } from '@aws-cdk/core';
+import { Construct, Duration, CfnOutput } from '@aws-cdk/core';
 import { EcsManager } from './ecs-manager';
 import { Vpc, SecurityGroup, Peer, Port } from '@aws-cdk/aws-ec2'
 import { ApplicationTargetGroup, ApplicationLoadBalancer, ApplicationProtocol, TargetType, Protocol } from '@aws-cdk/aws-elasticloadbalancingv2';
+import { HostedZone, IHostedZone } from '@aws-cdk/aws-route53';
+import { Certificate, CertificateValidation, DnsValidatedCertificate } from '@aws-cdk/aws-certificatemanager';
+import { Distribution } from '@aws-cdk/aws-cloudfront';
+import { LoadBalancerV2Origin } from '@aws-cdk/aws-cloudfront-origins';
 
 /**
  * @interface DeployStageProps to specify arguments
@@ -15,6 +19,9 @@ interface DeployStageProps {
     readonly minInstances: number;
     readonly maxInstances: number;
     readonly desiredInstances: number;
+    readonly domain: string;
+    readonly zoneId: string;
+    readonly stage: string;
 }
 
 /**
@@ -28,6 +35,7 @@ class DeployStage extends Construct {
     public image: Artifact;
     private readonly ecsManager: EcsManager;
     public readonly stageConfig: StageProps;
+    public readonly stage: string;
 
     /**
      * Constructor
@@ -39,16 +47,30 @@ class DeployStage extends Construct {
     constructor(scope: Construct, id: string, props: DeployStageProps) {
         super(scope, id);
 
+        this.stage = props.stage;
+
         // Create VPC
-        const vpc = new Vpc(this, `portfolio-website-${id}-vpc`, { maxAzs: 2 });
+        const vpc = this.createVpc();
 
         // @TODO: Maybe Specify Availability Zone?
 
-        // @TODO: Create Route 53 Hosted Zone
+        // Create Route 53 Hosted Zone and Domain
+        const zone = HostedZone.fromHostedZoneAttributes(this, `zone-${this.stage}`, {
+            zoneName: props.domain,
+            hostedZoneId: props.zoneId
+        });
 
-        // @TODO: Create Route 53 Domain
+        // Create SSL Certificate
+        const cert = new DnsValidatedCertificate(this, `CrossRegionCertificate-${this.stage}`, {
+            domainName: props.domain,
+            hostedZone: zone,
+            region: 'us-east-1'
+        });
 
-        // @TODO: Create SSL Certificate
+        const albCert = new Certificate(this, `albCert-${this.stage}`, {
+            domainName: props.domain,
+            validation: CertificateValidation.fromDns(zone)
+        });
 
         // Create Target Group to be used by ECS Cluster (and Health Check)
         const targetGroup = this.createTargetGroup(vpc);
@@ -57,24 +79,42 @@ class DeployStage extends Construct {
         const albSG = this.createLoadBalancerSecurityGroup(vpc);
 
         // Create Application Load Balancer
-        const alb = this.createApplicationLoadBalancer(vpc, targetGroup, albSG);
+        const alb = this.createApplicationLoadBalancer(vpc, targetGroup, albSG, albCert);
 
-        // @TODO: Create CloudFront
+        // Create CloudFront
+        const cloudfront = this.createCloudFront(cert, alb, props.domain);
 
         // @TODO: Create Public Subnet for Load Balancer
 
         // @TODO: Create Private Subnet for ECS
 
         // Initialize ECS Manager
-        this.ecsManager = this.createEcsManager(props.minInstances, props.maxInstances, 
-            props.desiredInstances, props.repository, vpc, albSG, targetGroup, id);
+        this.ecsManager = this.createEcsManager(props.minInstances, props.maxInstances,
+            props.desiredInstances, props.repository, vpc, albSG, targetGroup, props.stage);
 
         // Create Stage
         this.stageConfig = this.createDeployStage(id, props.image);
+
+        // CloudFormation Output
+        this.output(props.stage, vpc, zone, cert, targetGroup, albSG, alb, this.stageConfig);
+    }
+
+    private createCloudFront(cert: Certificate, alb: ApplicationLoadBalancer, domain: string) {
+        return new Distribution(this, `cf-distribution-${this.stage}`, {
+            defaultBehavior: { origin: new LoadBalancerV2Origin(alb) },
+            domainNames: [domain],
+            certificate: cert,
+          });
+    }
+
+    private createVpc() {
+        return new Vpc(this, `portfolio-website-${this.stage}-vpc`, {
+            maxAzs: 2,
+        });
     }
 
     private createTargetGroup(vpc: Vpc): ApplicationTargetGroup {
-        const target = new ApplicationTargetGroup(this, "target-group", {
+        const target = new ApplicationTargetGroup(this, `target-group-${this.stage}`, {
             port: 80,
             vpc: vpc,
             protocol: ApplicationProtocol.HTTP,
@@ -84,41 +124,39 @@ class DeployStage extends Construct {
         target.configureHealthCheck({
             path: "/",
             protocol: Protocol.HTTP,
-            interval: Duration.seconds(30)
+            interval: Duration.minutes(2)
         });
         return target;
     }
 
     // Provide a secure connection between the ALB and ECS
     private createLoadBalancerSecurityGroup(vpc: Vpc) {
-        const albSG = new SecurityGroup(this, "alb-SG", {
+        const albSG = new SecurityGroup(this, `alb-SG-${this.stage}`, {
             vpc: vpc,
             allowAllOutbound: true,
         });
-  
-        // @TODO: Convert to ONLY HTTPS
+
         albSG.addIngressRule(
             Peer.anyIpv4(),
-            Port.tcp(80),
-            "Allow HTTP Traffic"
+            Port.tcp(443),
+            "Allow HTTPS Traffic"
         );
 
         return albSG;
     }
 
-    private createApplicationLoadBalancer(vpc: Vpc, target: ApplicationTargetGroup, albSG: SecurityGroup): ApplicationLoadBalancer {
-        const alb = new ApplicationLoadBalancer(this, 'alb', {
+    private createApplicationLoadBalancer(vpc: Vpc, target: ApplicationTargetGroup, albSG: SecurityGroup, cert: Certificate): ApplicationLoadBalancer {
+        const alb = new ApplicationLoadBalancer(this, `alb-${this.stage}`, {
             vpc,
             vpcSubnets: { subnets: vpc.publicSubnets },
             internetFacing: true
         });
 
-        // @TODO: Specify HTTPS Connections 
-        const listener = alb.addListener("alb-listener", {
+        const listener = alb.addListener(`alb-listener-${this.stage}`, {
             open: true,
-            port: 80,
-            defaultTargetGroups: [ target ]
-            // certificates: [cert],
+            port: 443,
+            defaultTargetGroups: [target],
+            certificates: [ cert ],
         });
 
         alb.addSecurityGroup(albSG);
@@ -126,8 +164,8 @@ class DeployStage extends Construct {
         return alb;
     }
 
-    private createEcsManager (min: number, max: number, desired: number, repo: Repository, vpc: Vpc, albSG: SecurityGroup, target: ApplicationTargetGroup, stage: string) {
-        return new EcsManager(this, `EcsManager`, {
+    private createEcsManager(min: number, max: number, desired: number, repo: Repository, vpc: Vpc, albSG: SecurityGroup, target: ApplicationTargetGroup, stage: string) {
+        return new EcsManager(this, `EcsManager-${stage}`, {
             minInstances: min,
             maxInstances: max,
             desiredInstances: desired,
@@ -156,6 +194,20 @@ class DeployStage extends Construct {
             stageName: stageName,
             actions: [ecsDeployAction],
         }
+    }
+
+    /**
+     * Print Output
+     */
+    private output(stage: string, vpc: Vpc, zone: IHostedZone, cert: Certificate, 
+        target: ApplicationTargetGroup, albSG: SecurityGroup, alb: ApplicationLoadBalancer, deploy: StageProps) {
+        new CfnOutput(this, `VPC_ID_${stage}`, { value: vpc.vpcId });
+        new CfnOutput(this, `Zone_ID_${stage}`, { value: zone.hostedZoneId });
+        new CfnOutput(this, `Cert_ARN_${stage}`, { value: cert.certificateArn });
+        new CfnOutput(this, `TargetGroup_ARN_${stage}`, { value: target.targetGroupArn });
+        new CfnOutput(this, `AlbSG_ID_${stage}`, { value: albSG.securityGroupId });
+        new CfnOutput(this, `ALB_ARN_${stage}`, { value: alb.loadBalancerArn });
+        new CfnOutput(this, `DeployStage_Name_${stage}`, { value: deploy.stageName });
     }
 }
 
