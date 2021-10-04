@@ -33,6 +33,16 @@ export class PortfolioWebsiteInfraStack extends Stack {
     constructor(scope: Construct, id: string, props: PortfolioStackProps) {
         super(scope, id, props);
 
+        // Default Beta Values
+        const BETA_IDENTIFIER = 'beta';
+        const BETA_DOMAIN = process.env.BETA_DOMAIN || 'johnedquinn-beta.click';
+        const BETA_ZONE_ID = process.env.BETA_ZONE_ID || 'Z0122871PC0G7PLFCLZ7';
+
+        // Default Prod Values
+        const PROD_IDENTIFIER = 'prod';
+        const PROD_DOMAIN = process.env.PROD_DOMAIN || 'johnedquinn.io';
+        const PROD_ZONE_ID = process.env.PROD_ZONE_ID || 'Z094875525UQXE18F6WUE';
+
         // @TODO: Trigger Deployment of own Stack whenever pushed to main
 
         // ECR Shared Repository
@@ -72,8 +82,9 @@ export class PortfolioWebsiteInfraStack extends Stack {
             minInstances: 1,
             maxInstances: 1,
             desiredInstances: 1,
-            domain: 'johnedquinn-beta.com',
-            stage: 'beta'
+            domain: BETA_DOMAIN,
+            zoneId: BETA_ZONE_ID,
+            stage: BETA_IDENTIFIER
         });
         pipeline.addStage(betaStage.stageConfig);
         
@@ -88,8 +99,9 @@ export class PortfolioWebsiteInfraStack extends Stack {
             minInstances: 1,
             maxInstances: 2,
             desiredInstances: 1,
-            domain: 'johnedquinn.com',
-            stage: 'prod'
+            domain: PROD_DOMAIN,
+            zoneId: PROD_ZONE_ID,
+            stage: PROD_IDENTIFIER
         });
         pipeline.addStage(prodStage.stageConfig);
 
