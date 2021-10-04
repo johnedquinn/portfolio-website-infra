@@ -33,6 +33,8 @@ As my current website is currently running on AWS Amplify, I haven't gotten arou
 - Manual Approvals between Beta and Prod
 - Alarms and Metrics on Prod Stage
 
+**Note**: There is a known issue where, on deployment, the ECR Repo needs to contain an image -- but the image hasn't been uploaded. Therefore, the ECS service will infinitely try to create tasks. Issue is the ECR Repo can't exist before Stack initial creation. There might be an option -- but I'm not sure yet.
+
 I still need to figure out exactly how to avoid specifying AWS account IDs in the source code, while also deploying the site to multiple regions and accounts -- all while making it easy to deploy to a personal account. A thought, though -- using Docker containers really brings down the need to set-up a lot of the infrastructure for testing. As cross-platform functionality can be guaranteed, there's almost no need to test out the site in an AWS stack. All you'd need is credentials to make calls to dependent services. Just thinking out loud.
 
 ### Takeways (So Far)
