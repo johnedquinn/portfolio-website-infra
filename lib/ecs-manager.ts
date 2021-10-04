@@ -57,7 +57,7 @@ class EcsManager extends Construct {
         this.vpc = props.vpc;
 
         // Configure Cluster and Service
-        this.cluster = this.createCluster(id);
+        this.cluster = this.createCluster(id, props.vpc);
 
         // Create Task
         this.task = this.createTask();
@@ -79,10 +79,10 @@ class EcsManager extends Construct {
         this.output();
     }
 
-    private createCluster(name: string): Cluster {
+    private createCluster(name: string, vpc: Vpc): Cluster {
         return new Cluster(this, name, {
             clusterName: name,
-            // vpc
+            vpc: vpc
         });
     }
 

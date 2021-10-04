@@ -5,6 +5,8 @@ import { Construct, Duration } from '@aws-cdk/core';
 import { EcsManager } from './ecs-manager';
 import { Vpc, SecurityGroup, Peer, Port } from '@aws-cdk/aws-ec2'
 import { ApplicationTargetGroup, ApplicationLoadBalancer, ApplicationProtocol, TargetType, Protocol } from '@aws-cdk/aws-elasticloadbalancingv2';
+import { PublicHostedZone } from '@aws-cdk/aws-route53'
+import { Certificate, CertificateValidation } from '@aws-cdk/aws-certificatemanager'
 
 /**
  * @interface DeployStageProps to specify arguments
@@ -15,6 +17,8 @@ interface DeployStageProps {
     readonly minInstances: number;
     readonly maxInstances: number;
     readonly desiredInstances: number;
+    readonly domain: string;
+    readonly stage: string;
 }
 
 /**
@@ -40,15 +44,20 @@ class DeployStage extends Construct {
         super(scope, id);
 
         // Create VPC
-        const vpc = new Vpc(this, `portfolio-website-${id}-vpc`, { maxAzs: 2 });
+        const vpc = this.createVpc(id);
 
         // @TODO: Maybe Specify Availability Zone?
 
-        // @TODO: Create Route 53 Hosted Zone
+        // Create Route 53 Hosted Zone and Domain
+        const zone = new PublicHostedZone(this, 'Zone', {
+            zoneName: props.domain
+        });
 
-        // @TODO: Create Route 53 Domain
-
-        // @TODO: Create SSL Certificate
+        // Create SSL Certificate
+        const cert = new Certificate(this, "certificate", {
+            domainName: props.domain,
+            validation: CertificateValidation.fromDns(zone),
+        });
 
         // Create Target Group to be used by ECS Cluster (and Health Check)
         const targetGroup = this.createTargetGroup(vpc);
@@ -57,7 +66,7 @@ class DeployStage extends Construct {
         const albSG = this.createLoadBalancerSecurityGroup(vpc);
 
         // Create Application Load Balancer
-        const alb = this.createApplicationLoadBalancer(vpc, targetGroup, albSG);
+        const alb = this.createApplicationLoadBalancer(vpc, targetGroup, albSG, cert);
 
         // @TODO: Create CloudFront
 
@@ -66,11 +75,17 @@ class DeployStage extends Construct {
         // @TODO: Create Private Subnet for ECS
 
         // Initialize ECS Manager
-        this.ecsManager = this.createEcsManager(props.minInstances, props.maxInstances, 
+        this.ecsManager = this.createEcsManager(props.minInstances, props.maxInstances,
             props.desiredInstances, props.repository, vpc, albSG, targetGroup, id);
 
         // Create Stage
         this.stageConfig = this.createDeployStage(id, props.image);
+    }
+
+    private createVpc(id: string) {
+        return new Vpc(this, `portfolio-website-${id}-vpc`, {
+            maxAzs: 2,
+        });
     }
 
     private createTargetGroup(vpc: Vpc): ApplicationTargetGroup {
@@ -95,30 +110,28 @@ class DeployStage extends Construct {
             vpc: vpc,
             allowAllOutbound: true,
         });
-  
-        // @TODO: Convert to ONLY HTTPS
+
         albSG.addIngressRule(
             Peer.anyIpv4(),
-            Port.tcp(80),
-            "Allow HTTP Traffic"
+            Port.tcp(443),
+            "Allow HTTPS Traffic"
         );
 
         return albSG;
     }
 
-    private createApplicationLoadBalancer(vpc: Vpc, target: ApplicationTargetGroup, albSG: SecurityGroup): ApplicationLoadBalancer {
+    private createApplicationLoadBalancer(vpc: Vpc, target: ApplicationTargetGroup, albSG: SecurityGroup, cert: Certificate): ApplicationLoadBalancer {
         const alb = new ApplicationLoadBalancer(this, 'alb', {
             vpc,
             vpcSubnets: { subnets: vpc.publicSubnets },
             internetFacing: true
         });
 
-        // @TODO: Specify HTTPS Connections 
         const listener = alb.addListener("alb-listener", {
             open: true,
-            port: 80,
-            defaultTargetGroups: [ target ]
-            // certificates: [cert],
+            port: 443,
+            defaultTargetGroups: [target],
+            certificates: [cert],
         });
 
         alb.addSecurityGroup(albSG);
@@ -126,7 +139,7 @@ class DeployStage extends Construct {
         return alb;
     }
 
-    private createEcsManager (min: number, max: number, desired: number, repo: Repository, vpc: Vpc, albSG: SecurityGroup, target: ApplicationTargetGroup, stage: string) {
+    private createEcsManager(min: number, max: number, desired: number, repo: Repository, vpc: Vpc, albSG: SecurityGroup, target: ApplicationTargetGroup, stage: string) {
         return new EcsManager(this, `EcsManager`, {
             minInstances: min,
             maxInstances: max,

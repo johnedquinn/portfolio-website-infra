@@ -1,6 +1,6 @@
 import { StageProps, Artifact } from '@aws-cdk/aws-codepipeline';
 import { CodeStarConnectionsSourceAction } from '@aws-cdk/aws-codepipeline-actions';
-import { Construct } from '@aws-cdk/core';
+import { Construct, CfnOutput } from '@aws-cdk/core';
 import { PortfolioPipeline } from './portfolio-pipeline';
 
 /**
@@ -33,6 +33,8 @@ class SourceStage extends Construct {
         this.pipeline = props.pipeline;
         this.sourceCode = props.pipeline.sourceCode;
         this.stageConfig = this.createSourceStage('Source', this.sourceCode);
+
+        this.output(this.stageConfig);
     }
 
     /**
@@ -58,6 +60,14 @@ class SourceStage extends Construct {
         };
     }
 
+    /**
+     * Print Output
+     */
+    private output(source: StageProps) {
+        new CfnOutput(this, 'SourceStage_Name', { value: source.stageName });
+    }
+
 }
+
 
 export { SourceStage, SourceStageProps };

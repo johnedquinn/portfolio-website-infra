@@ -2,14 +2,15 @@ import { StageProps, Artifact } from '@aws-cdk/aws-codepipeline';
 import { CodeBuildAction } from '@aws-cdk/aws-codepipeline-actions';
 import { BuildSpec, PipelineProject, LinuxBuildImage } from '@aws-cdk/aws-codebuild';
 import { PublicGalleryAuthorizationToken } from '@aws-cdk/aws-ecr';
-import { Construct, Stage } from '@aws-cdk/core';
+import { Construct, CfnOutput } from '@aws-cdk/core';
 import { PortfolioPipeline } from './portfolio-pipeline';
 
 /**
  * @interface BuildStageProps to specify arguments
  */
 interface BuildStageProps {
-    readonly pipeline: PortfolioPipeline;
+    readonly image: Artifact;
+    readonly sourceCode: Artifact;
 }
 
 /**
@@ -23,6 +24,7 @@ class BuildStage extends Construct {
     public readonly image: Artifact;
     public readonly stageConfig: StageProps;
     private readonly pipeline: PortfolioPipeline;
+    private project: PipelineProject;
 
     /**
      * Constructor
@@ -33,10 +35,11 @@ class BuildStage extends Construct {
      */
     constructor(scope: Construct, id: string, props: BuildStageProps) {
         super(scope, id);
-        this.pipeline = props.pipeline;
-        this.sourceCode = props.pipeline.sourceCode;
-        this.image = props.pipeline.image;
+        this.sourceCode = props.sourceCode;
+        this.image = props.image;
         this.stageConfig = this.createBuildStage('Build', this.sourceCode, this.image);
+
+        this.output(this.stageConfig, this.project);
     }
 
     /**
@@ -50,7 +53,7 @@ class BuildStage extends Construct {
     private createBuildStage(stageName: string, code: Artifact, image: Artifact): StageProps {
 
         // Build Configuration
-        const project = new PipelineProject(this, 'Project', {
+        this.project = new PipelineProject(this, 'Project', {
             buildSpec: BuildSpec.fromSourceFilename('buildspec.yml'),
             environment: {
                 buildImage: LinuxBuildImage.STANDARD_3_0,
@@ -59,25 +62,34 @@ class BuildStage extends Construct {
         });
 
         // ECR Role
-        project.role?.addManagedPolicy({
+        this.project.role?.addManagedPolicy({
             managedPolicyArn: 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser'
         });
 
         // For Reading from Docker
-        PublicGalleryAuthorizationToken.grantRead(project.grantPrincipal);
+        PublicGalleryAuthorizationToken.grantRead(this.project.grantPrincipal);
 
-        // Perform Build
+        // Perform Build Action
         const codebuildAction = new CodeBuildAction({
             actionName: 'CodeBuild_Action',
             input: code,
             outputs: [image],
-            project: project,
+            project: this.project,
         });
 
         return {
             stageName: stageName,
             actions: [codebuildAction],
         };
+    }
+
+    /**
+     * Print Output
+     */
+    private output(build: StageProps, project: PipelineProject) {
+        new CfnOutput(this, 'BuildStage_Name', { value: build.stageName });
+        new CfnOutput(this, 'BuildProject_Arn', { value: project.projectArn });
+        new CfnOutput(this, 'BuildProject_Name', { value: project.projectName });
     }
 }
 

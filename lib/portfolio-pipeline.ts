@@ -17,6 +17,7 @@ class PortfolioPipeline extends Construct {
     // Construct Members
     private readonly pipeline: Pipeline;
     public readonly pipelineName: string;
+    public readonly arn: string;
     public sourceCode: Artifact;
     public image: Artifact;
 
@@ -42,6 +43,8 @@ class PortfolioPipeline extends Construct {
             stages: [
             ]
         });
+
+        this.arn = this.pipeline.pipelineArn;
 
     }
 
