@@ -1,6 +1,6 @@
 # Portfolio Website Infrastructure
 
-Hi! This project is an AWS CDK Pipeline, written in Typescript. Its goal is to set up a CodePipeline -- with stages involving CodeBuild, staging environments, and production environments (ECS) -- for developing and deploying my personal website. The associated source code for the containerized React website can be found [here](https://www.github.com/johnedquinn/portfolio-website).
+Hi! This project is an AWS CDK Pipeline, written in Typescript. Its goal is to set up a CodePipeline -- with stages involving CodeBuild, staging environments, and production environments (ECS) -- for developing and deploying my personal website. The [associated containerized React website](https://www.github.com/johnedquinn/portfolio-website), which houses my Portfolio Website is still a WIP.
 
 The website is currently running at [johnedquinn.io](https://johnedquinn.io) thanks to this repository. You can also see the beta website at [johnedquinn-beta.click](http://johnedquinn-beta.click).
 
