@@ -4,7 +4,7 @@ import { Repository } from '@aws-cdk/aws-ecr';
 import { Construct, Duration, CfnOutput } from '@aws-cdk/core';
 import { EcsManager } from './ecs-manager';
 import { Vpc, SecurityGroup, Peer, Port } from '@aws-cdk/aws-ec2'
-import { ApplicationTargetGroup, ApplicationLoadBalancer, ApplicationProtocol, TargetType, Protocol } from '@aws-cdk/aws-elasticloadbalancingv2';
+import { ApplicationTargetGroup, ApplicationLoadBalancer, ApplicationProtocol, TargetType, Protocol, ListenerAction } from '@aws-cdk/aws-elasticloadbalancingv2';
 import { HostedZone, IHostedZone } from '@aws-cdk/aws-route53';
 import { Certificate, CertificateValidation, DnsValidatedCertificate } from '@aws-cdk/aws-certificatemanager';
 import { Distribution } from '@aws-cdk/aws-cloudfront';
@@ -52,13 +52,13 @@ class DeployStage extends Construct {
         // Create VPC
         const vpc = this.createVpc();
 
-        // @TODO: Maybe Specify Availability Zone?
-
         // Create Route 53 Hosted Zone and Domain
         const zone = HostedZone.fromHostedZoneAttributes(this, `zone-${this.stage}`, {
             zoneName: props.domain,
             hostedZoneId: props.zoneId
         });
+
+        // @TODO: Create Alias Records
 
         // Create SSL Certificate
         const cert = new DnsValidatedCertificate(this, `CrossRegionCertificate-${this.stage}`, {
@@ -152,11 +152,18 @@ class DeployStage extends Construct {
             internetFacing: true
         });
 
-        const listener = alb.addListener(`alb-listener-${this.stage}`, {
+        alb.addListener(`alb-listener-${this.stage}`, {
             open: true,
             port: 443,
             defaultTargetGroups: [target],
             certificates: [ cert ],
+        });
+
+        alb.addRedirect({
+            sourcePort: 80,
+            sourceProtocol: ApplicationProtocol.HTTP,
+            targetPort: 443,
+            targetProtocol: ApplicationProtocol.HTTPS
         });
 
         alb.addSecurityGroup(albSG);
