@@ -14,22 +14,14 @@
     "@aws-cdk/assert": "1.125.0",
     "@types/jest": "^26.0.10",
     "@types/node": "10.17.27",
-    "aws-cdk": "1.125.0",
-    "jest": "^26.4.2",
-    "ts-jest": "^26.2.0",
+    "aws-cdk": "1.128.0",
+    "jest": "^27.3.1",
+    "ts-jest": "^27.0.7",
     "ts-node": "^9.0.0",
     "typescript": "~3.9.7"
   },
   "dependencies": {
-    "@aws-cdk/aws-cloudfront-origins": "^1.125.0",
-    "@aws-cdk/aws-codebuild": "^1.125.0",
-    "@aws-cdk/aws-codepipeline-actions": "^1.125.0",
-    "@aws-cdk/aws-ecr": "^1.125.0",
-    "@aws-cdk/aws-ecs-patterns": "^1.125.0",
-    "@aws-cdk/aws-iam": "^1.125.0",
-    "@aws-cdk/aws-waf": "^1.125.0",
-    "@aws-cdk/core": "1.125.0",
-    "@aws-cdk/pipelines": "^1.125.0",
+    "@johnedquinn/ecs-application": "^0.2.2",
     "source-map-support": "^0.5.16"
   }
 }
