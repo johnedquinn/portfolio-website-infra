@@ -21,7 +21,7 @@
     "typescript": "~3.9.7"
   },
   "dependencies": {
-    "@johnedquinn/ecs-application": "^0.2.2",
+    "@johnedquinn/ecs-application": "^0.2.3",
     "source-map-support": "^0.5.16"
   }
 }
